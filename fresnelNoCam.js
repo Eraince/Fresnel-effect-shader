@@ -55,7 +55,7 @@ const fshader = `
       
       gl_FragColor = reflectedColor;
     
-      gl_FragColor = mix( refractedColor, reflectedColor, fresnelFactor );
+      //gl_FragColor = mix( refractedColor, reflectedColor, fresnelFactor );
 
 		}
 `;
