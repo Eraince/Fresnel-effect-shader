@@ -1,57 +1,55 @@
 import * as THREE from "../resources/three.module.js";
 import { OrbitControls } from "../resources/examples/jsm/controls/OrbitControls.js";
 
-import { DragControls } from "../resources/examples/jsm/controls/DragControls.js";
 const vshader = `
+    uniform float mRefractionRatio;
+    uniform float mFresnelBias;
+    uniform float mFresnelScale;
+    uniform float mFresnelPower;
+
+    varying vec3 vReflect;
+    varying vec3 vRefract;
+    varying float fresnelFactor;
 
 
-uniform float mRefractionRatio;
-uniform float mFresnelBias;
-uniform float mFresnelScale;
-uniform float mFresnelPower;
+    void main() {
 
-varying vec3 vReflect;
-varying vec3 vRefract;
-varying float vReflectionFactor;
+        vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );
+        vec4 worldPosition = modelMatrix * vec4( position, 1.0 );
 
+        vec3 worldNormal = normalize( mat3( modelMatrix[0].xyz, modelMatrix[1].xyz, modelMatrix[2].xyz ) * normal );
 
-void main() {
+        vec3 I = worldPosition.xyz - cameraPosition;
 
-  vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );
-  vec4 worldPosition = modelMatrix * vec4( position, 1.0 );
-
-  vec3 worldNormal = normalize( mat3( modelMatrix[0].xyz, modelMatrix[1].xyz, modelMatrix[2].xyz ) * normal );
-
-  vec3 I = worldPosition.xyz - cameraPosition;
-
-  vReflect = reflect( I, worldNormal );
-  vRefract = refract( normalize( I ), worldNormal, mRefractionRatio );
+        vReflect = reflect( I, worldNormal );
+        vRefract = refract( normalize( I ), worldNormal, mRefractionRatio );
   
-  vReflectionFactor = mFresnelBias + mFresnelScale * pow( 1.0 + dot( normalize( I ), worldNormal ), mFresnelPower );
+        float vReflectionFactor = mFresnelBias + mFresnelScale * pow( 1.0 + dot( normalize( I ), worldNormal ), mFresnelPower );
+        fresnelFactor = max(0.0,min( vReflectionFactor, 1.0));
+        gl_Position = projectionMatrix * mvPosition;
 
-  gl_Position = projectionMatrix * mvPosition;
+  }`;
 
-}`;
 const fshader = `
-uniform samplerCube tCube;
+    uniform samplerCube tCube;
 
-varying vec3 vReflect;
-varying vec3 vRefract;
-varying float vReflectionFactor;
+    varying vec3 vReflect;
+    varying vec3 vRefract;
+    varying float fresnelFactor;
 
-void main() {
+    void main() {
 
-  vec4 reflectedColor = textureCube( tCube, vec3( vReflect.x, vReflect.yz ) );
+      vec4 reflectedColor = textureCube( tCube, vReflect );
 
-  vec4 refractedColor = vec4( 1.0 );
+      vec4 refractedColor = vec4( 1.0 );
 
-  refractedColor.rgb = textureCube( tCube, vec3( vRefract.x, vRefract.yz ) ).rgb;
+      refractedColor.rgb = textureCube( tCube, vRefract ).rgb;
   
 
-  gl_FragColor = mix( refractedColor, reflectedColor, clamp( vReflectionFactor, 0.0, 1.0 ) );
+      gl_FragColor = mix( refractedColor, reflectedColor, fresnelFactor );
   
  
-}`;
+  }`;
 
 const main = () => {
   const canvas = document.querySelector("#c");
@@ -96,7 +94,7 @@ const main = () => {
       "../skybox-2/BrightMorning01_UP.png",
       "../skybox-2/BrightMorning01_DN.png",
       "../skybox-2/BrightMorning01_FR.png",
-      "../skybox-2/BrightMorning01_BK.png"
+      "../skybox-2/BrightMorning01_BK.png",
     ]);
     scene.background = texture;
   }
@@ -116,22 +114,18 @@ const main = () => {
   {
     let uniforms = {
       mRefractionRatio: { value: 1.02 },
-
       mFresnelBias: { value: 0.1 },
-      mFresnelPower: { value: 3.5 },
+      mFresnelPower: { value: 2.0 },
       mFresnelScale: { value: 1.0 },
-
-      tCube: { type: "t", value: bSphereCamera.renderTarget }
+      tCube: { type: "t", value: bSphereCamera.renderTarget },
     };
 
     // create custom material for the shader
 
     let customMaterial = new THREE.ShaderMaterial({
       uniforms: uniforms,
-
       vertexShader: vshader,
-
-      fragmentShader: fshader
+      fragmentShader: fshader,
     });
     let bSphere = new THREE.Mesh(
       new THREE.SphereGeometry(50, 32, 32),

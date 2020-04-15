@@ -2,8 +2,6 @@ import * as THREE from "../resources/three.module.js";
 import { OrbitControls } from "../resources/examples/jsm/controls/OrbitControls.js";
 
 const vshader = `
-
-
     uniform float mRefractionRatio;
 		uniform float mFresnelBias;
 		uniform float mFresnelScale;
@@ -11,7 +9,7 @@ const vshader = `
 
     varying vec3 vReflect;
 		varying vec3 vRefract;
-		varying float vReflectionFactor;
+    varying float fresnelFactor;
 
 
     void main() {
@@ -21,7 +19,7 @@ const vshader = `
 
       vec3 worldNormal = normalize( mat3( modelMatrix[0].xyz, modelMatrix[1].xyz, modelMatrix[2].xyz ) * normal );
       
-      //calculate incidence director
+      //calculate incidence direction
 			vec3 I = worldPosition.xyz - cameraPosition;
 
       //calculate reflected light
@@ -31,7 +29,8 @@ const vshader = `
       vRefract = refract( normalize( I ), worldNormal, mRefractionRatio );
       
       //calculate fresnel effect
-			vReflectionFactor = mFresnelBias + mFresnelScale * pow( 1.0 + dot( normalize( I ), worldNormal ), mFresnelPower );
+      float vReflectionFactor = mFresnelBias + mFresnelScale * pow( 1.0 + dot( normalize( I ), worldNormal ), mFresnelPower );
+      fresnelFactor = max(0.0,min( vReflectionFactor, 1.0));
 
 			gl_Position = projectionMatrix * mvPosition;
  
@@ -44,19 +43,19 @@ const fshader = `
 
 		varying vec3 vReflect;
 		varying vec3 vRefract;
-		varying float vReflectionFactor;
+    varying float fresnelFactor;
 
     void main() {
 
       //sample from skybox texture
-      vec4 reflectedColor = textureCube( tCube, vec3( vReflect.x, vReflect.yz ) );
-      
+      vec4 reflectedColor = textureCube( tCube, vReflect );
+     
 			vec4 refractedColor = vec4( 1.0 );
-			refractedColor.rgb = textureCube( tCube, vec3( vRefract.x, vRefract.yz ) ).rgb;
-			
-      //gl_FragColor = reflectedColor;
-      //gl_FragColor = refractedColor;
-      gl_FragColor = mix( refractedColor, reflectedColor, clamp( vReflectionFactor, 0.0, 1.0 ) );
+      refractedColor.rgb = textureCube( tCube,  vRefract ).rgb;
+      
+      gl_FragColor = reflectedColor;
+    
+      gl_FragColor = mix( refractedColor, reflectedColor, fresnelFactor );
 
 		}
 `;
@@ -89,7 +88,7 @@ const main = () => {
       "../skybox/top.png",
       "../skybox/bottom.png",
       "../skybox/front.png",
-      "../skybox/back.png"
+      "../skybox/back.png",
     ];
 
     const textureCube = new THREE.CubeTextureLoader().load(urls);
@@ -102,14 +101,14 @@ const main = () => {
       mFresnelBias: { value: 0.1 },
       mFresnelPower: { value: 1.0 },
       mFresnelScale: { value: 1.0 },
-      tCube: { value: textureCube }
+      tCube: { value: textureCube },
     };
 
     const geometry = new THREE.SphereBufferGeometry(100, 32, 16);
     const material = new THREE.ShaderMaterial({
       uniforms: uniforms,
       vertexShader: vshader,
-      fragmentShader: fshader
+      fragmentShader: fshader,
     });
 
     for (var i = 0; i < 50; i++) {
@@ -135,7 +134,7 @@ const main = () => {
 
   requestAnimationFrame(render);
 
-  const resizeRendererToDisplaySize = renderer => {
+  const resizeRendererToDisplaySize = (renderer) => {
     const canvas = renderer.domElement;
     const width = canvas.clientWidth;
     const height = canvas.clientHeight;
